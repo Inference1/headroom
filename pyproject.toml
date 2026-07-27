@@ -82,7 +82,16 @@ proxy = [
     "magika>=0.6.0",              # ML content detection for ContentRouter
     "zstandard>=0.20.0",          # Decompress zstd request bodies (Codex, etc.)
     "websockets>=13.0",           # WebSocket proxy for /v1/responses (Codex gpt-5.4+)
-    "onnxruntime>=1.16.0",        # Kompress ONNX INT8 text compression (no torch needed)
+    # Floor is dictated by the RUST core, not by Python. `headroom/_ort.py`
+    # points `ORT_DYLIB_PATH` at this package's bundled dylib, and the Rust
+    # `ort` crate refuses any runtime older than its `ORT_API_VERSION`. That
+    # constant is `17 + one per enabled api-N feature`; `fastembed` turns on
+    # `api-24`, so the effective requirement is ONNX Runtime >= 1.24. Below
+    # that, `ort` DEADLOCKS rather than erroring — its version-mismatch path
+    # re-enters the `Once` it is already initialising, so the process hangs at
+    # 0% CPU with no message. Re-derive the number with:
+    #   cargo tree -p headroom-core -e features | grep 'ort-sys feature "api-'
+    "onnxruntime>=1.24",          # Kompress ONNX INT8 text compression (no torch needed)
     "transformers>=5.5.0,<6.0",   # Tokenizer only (for Kompress)
     "watchdog>=4.0.0",            # File watcher for live code graph reindexing (--code-graph)
     "sqlite-vec>=0.1.6",          # Vector index for memory (--memory). Lightweight, no torch.
@@ -182,7 +191,10 @@ image = [
     # core + `onnxruntime` engine; same ORT backend, just split into
     # two packages. Total install size and inference speed unchanged.
     "rapidocr>=3.0,<4; python_version>='3.13'",
-    "onnxruntime>=1.7,<2; python_version>='3.13'",
+    # Floor raised from 1.7 for the same reason as the [proxy] pin: this is the
+    # ORT engine rapidocr drives, but it is also the dylib `headroom/_ort.py`
+    # hands to the Rust core, and anything below 1.24 deadlocks `ort`.
+    "onnxruntime>=1.24,<2; python_version>='3.13'",
 ]
 # Report generation
 reports = [
@@ -232,7 +244,8 @@ mcp = [
 ]
 # Voice filler detection
 voice = [
-    "onnxruntime>=1.16.0",
+    # Same >= 1.24 floor as the core dependency — see the note there.
+    "onnxruntime>=1.24",
     "transformers>=5.5.0,<6.0",
     "torch>=2.12.1; sys_platform != 'darwin' or platform_machine != 'x86_64'",
 ]
